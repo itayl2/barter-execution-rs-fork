@@ -8,6 +8,7 @@ use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
 };
+use crate::ExecutionId;
 
 /// Type of [`Order`].
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
@@ -157,6 +158,14 @@ where
 /// [`Instrument`](barter_integration::model::Instrument).
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Deserialize, Serialize)]
 pub struct OrderId(pub String);
+
+// added formatter so that it could be converted to string into the dummy external sell order
+// impl Display for OrderId {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{}", self.0)
+//     }
+// }
+
 
 impl<S> From<S> for OrderId
 where

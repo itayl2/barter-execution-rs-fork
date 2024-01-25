@@ -33,6 +33,7 @@ use async_trait::async_trait;
 use barter_integration::model::Exchange;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use barter_integration::model::instrument::Instrument;
 use tokio::sync::mpsc;
 
 /// Errors generated during live, dry, or simulated execution.
@@ -48,6 +49,7 @@ pub mod execution;
 
 /// Simulated Exchange and it's associated simulated [`ExecutionClient`].
 pub mod simulated;
+pub mod util;
 
 /// Defines the communication with the exchange. Each exchange integration requires it's own
 /// implementation.
@@ -76,6 +78,16 @@ pub trait ExecutionClient {
         open_requests: Vec<Order<RequestOpen>>,
     ) -> Vec<Result<Order<Open>, ExecutionError>>;
 
+    async fn open_orders_no_balance_no_return(
+        &self,
+        open_requests: Vec<Order<RequestOpen>>,
+    ) -> Result<(), ExecutionError>;
+
+    fn open_orders_no_response_no_balance(
+        &self,
+        open_requests: Vec<Order<RequestOpen>>,
+    ) -> Result<(), ExecutionError>;
+
     /// Cancel [`Order<Open>`]s.
     async fn cancel_orders(
         &self,
@@ -84,6 +96,8 @@ pub trait ExecutionClient {
 
     /// Cancel all account [`Order<Open>`]s.
     async fn cancel_orders_all(&self) -> Result<Vec<Order<Cancelled>>, ExecutionError>;
+
+    async fn fetch_first_bid_and_ask(&self, instrument: Instrument) -> Result<(Option<f64>, Option<f64>), ExecutionError>;
 }
 
 /// Unique identifier for an [`ExecutionClient`] implementation.

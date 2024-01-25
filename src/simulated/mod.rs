@@ -27,6 +27,17 @@ pub enum SimulatedEvent {
             oneshot::Sender<Vec<Result<Order<Open>, ExecutionError>>>,
         ),
     ),
+    OpenOrdersNoBalance(
+        (
+            Vec<Order<RequestOpen>>,
+            oneshot::Sender<Vec<Result<Order<Open>, ExecutionError>>>,
+        ),
+    ),
+    OpenOrdersNoResponseNoBalance(
+        (
+            Vec<Order<RequestOpen>>
+        )
+    ),
     CancelOrders(
         (
             Vec<Order<RequestCancel>>,
@@ -35,4 +46,10 @@ pub enum SimulatedEvent {
     ),
     CancelOrdersAll(oneshot::Sender<Result<Vec<Order<Cancelled>>, ExecutionError>>),
     MarketTrade((Instrument, PublicTrade)),
+    FetchFirstBidAndAsk(
+        (
+            Instrument,
+            oneshot::Sender<Result<(Option<f64>, Option<f64>), ExecutionError>>,
+        ),
+    ),
 }

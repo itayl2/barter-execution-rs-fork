@@ -47,7 +47,7 @@ async fn main() {
     let (mut event_simulated_tx, event_simulated_rx) = mpsc::unbounded_channel();
 
     // Build SimulatedExchange & run on it's own Tokio task
-    tokio::spawn(run_default_exchange(event_account_tx, event_simulated_rx));
+    tokio::spawn(run_default_exchange(event_account_tx, event_simulated_rx, None));
 
     // Initialise SimulatedExecution execution to interact with the exchange via the simulated channel
     let client = SimulatedExecution {

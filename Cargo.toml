@@ -19,6 +19,7 @@ barter-data = "0.7.0"
 
 # Logging
 tracing = "0.1.36"
+anyhow = "1.0"
 
 # Async
 tokio = { version = "1.17.0", features = ["sync", "macros", "rt-multi-thread"] }

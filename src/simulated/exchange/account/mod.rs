@@ -62,10 +62,47 @@ impl ClientAccount {
     ) {
         let open_results = open_requests
             .into_iter()
-            .map(|request| self.try_open_order_atomic(request))
+            .map(|request| self.try_open_order_atomic(request, true))
             .collect();
 
         respond_with_latency(self.latency, response_tx, open_results);
+    }
+
+    pub fn open_orders_no_balance_no_latency(
+        &mut self,
+        open_requests: Vec<Order<RequestOpen>>,
+        response_tx: oneshot::Sender<Vec<Result<Order<Open>, ExecutionError>>>,
+    ) {
+        let open_results = open_requests
+            .into_iter()
+            .map(|request| self.try_open_order_atomic(request, false))
+            .collect();
+
+        respond_with_latency(Duration::from_millis(0), response_tx, open_results);
+    }
+
+    pub fn open_orders_no_response_no_balance(
+        &mut self,
+        open_requests: Vec<Order<RequestOpen>>,
+    ) {
+        for request in open_requests {
+            self.try_open_order_atomic(request, false);
+        }
+    }
+
+    pub fn get_first_bid_and_ask(
+        &mut self,
+        instrument: &Instrument,
+        response_tx: oneshot::Sender<Result<(Option<f64>, Option<f64>), ExecutionError>>
+    ) {
+        match self.orders.orders_mut(instrument) {
+            Ok(orders) => {
+                let bid = orders.bids.first().map_or(None, |order| Some(order.state.price));
+                let ask = orders.asks.first().map_or(None, |order| Some(order.state.price));
+                respond_with_latency(self.latency, response_tx, Ok((bid, ask)));
+            },
+            Err(e) => panic!("Error getting first bid and ask for instrument {:?}: {:?}", instrument, e)
+        }
     }
 
     /// Execute an open order request, adding it to [`ClientOrders`] and updating the associated
@@ -73,15 +110,20 @@ impl ClientAccount {
     pub fn try_open_order_atomic(
         &mut self,
         request: Order<RequestOpen>,
+        handle_balance: bool,
     ) -> Result<Order<Open>, ExecutionError> {
         Self::check_order_kind_support(request.state.kind)?;
 
-        // Calculate required available balance to open order
-        let (symbol, required_balance) = request.required_available_balance();
+        let mut required_balance: f64 = 0.0;
+        if handle_balance {
+            let balance_check = request.required_available_balance();
+            let symbol = balance_check.0;
+            required_balance = balance_check.1;
 
-        // Check available balance is sufficient
-        self.balances
-            .has_sufficient_available_balance(symbol, required_balance)?;
+            // Check available balance is sufficient
+            self.balances
+                .has_sufficient_available_balance(symbol, required_balance)?;
+        }
 
         // Build Open<Order>
         let open = self.orders.build_order_open(request);
@@ -91,12 +133,13 @@ impl ClientAccount {
 
         // Now that fallible operations have succeeded, mutate ClientBalances & ClientOrders
         orders.add_order_open(open.clone());
-        let balance_event = self.balances.update_from_open(&open, required_balance);
-
-        // Send AccountEvents to client
-        self.event_account_tx
-            .send(balance_event)
-            .expect("Client is offline - failed to send AccountEvent::Balance");
+        if handle_balance {
+            let balance_event = self.balances.update_from_open(&open, required_balance);
+            // Send AccountEvents to client
+            self.event_account_tx
+                .send(balance_event)
+                .expect("Client is offline - failed to send AccountEvent::Balance");
+        }
 
         self.event_account_tx
             .send(AccountEvent {

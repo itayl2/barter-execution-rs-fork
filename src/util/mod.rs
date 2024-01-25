@@ -1,4 +1,6 @@
-use barter_execution::{
+// file copied from {root}/tests/util to make these functions accessible for imports by other repos
+// removed all (super) mentions to make the functions accessbile to the public
+use crate::{
     model::{
         balance::Balance,
         order::{Cancelled, Open, Order, OrderId, OrderKind, RequestCancel, RequestOpen},
@@ -18,13 +20,31 @@ use barter_integration::model::{
     Exchange, Side,
 };
 use std::{collections::HashMap, time::Duration};
+use std::error::Error;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
-pub(super) async fn run_default_exchange(
+
+#[derive(Clone)]
+pub struct Ids {
+    pub cid: ClientOrderId,
+    pub id: OrderId,
+}
+
+impl Ids {
+    pub fn new<Id: Into<OrderId>>(cid: Uuid, id: Id) -> Self {
+        Self {
+            cid: ClientOrderId(cid),
+            id: id.into(),
+        }
+    }
+}
+
+pub async fn run_default_exchange(
     event_account_tx: mpsc::UnboundedSender<AccountEvent>,
     event_simulated_rx: mpsc::UnboundedReceiver<SimulatedEvent>,
     balances: Option<ClientBalances>
-) {
+) -> Result<(), Box<dyn Error>> {
     // Define SimulatedExchange available Instruments
     let instruments = instruments();
 
@@ -47,24 +67,25 @@ pub(super) async fn run_default_exchange(
         .build()
         .expect("failed to build SimulatedExchange")
         .run()
-        .await
+        .await;
+    Ok(())
 }
 
-pub(super) fn latency_50ms() -> Duration {
+pub fn latency_50ms() -> Duration {
     Duration::from_millis(50)
 }
 
-pub(super) fn fees_50_percent() -> f64 {
+pub fn fees_50_percent() -> f64 {
     0.5
 }
 
 // Instruments that the SimulatedExchange supports
-pub(super) fn instruments() -> Vec<Instrument> {
+pub fn instruments() -> Vec<Instrument> {
     vec![Instrument::from(("btc", "usdt", InstrumentKind::Perpetual))]
 }
 
 // Initial SimulatedExchange ClientAccount balances for each Symbol
-pub(super) fn initial_balances() -> ClientBalances {
+pub fn initial_balances() -> ClientBalances {
     ClientBalances(HashMap::from([
         (Symbol::from("btc"), Balance::new(10.0, 10.0)),
         (Symbol::from("usdt"), Balance::new(10_000.0, 10_000.0)),
@@ -72,7 +93,7 @@ pub(super) fn initial_balances() -> ClientBalances {
 }
 
 // Utility for creating an Open Order request
-pub(super) fn order_request_limit<I>(
+pub fn order_request_limit<I>(
     instrument: I,
     cid: ClientOrderId,
     side: Side,
@@ -96,7 +117,7 @@ where
 }
 
 // Utility for creating an Open Order
-pub(super) fn open_order<I>(
+pub fn open_order<I>(
     instrument: I,
     cid: ClientOrderId,
     id: OrderId,
@@ -123,7 +144,7 @@ where
 }
 
 // Utility for creating an Order RequestCancel
-pub(super) fn order_cancel_request<I, Id>(
+pub fn order_cancel_request<I, Id>(
     instrument: I,
     cid: ClientOrderId,
     side: Side,
@@ -143,7 +164,7 @@ where
 }
 
 // Utility for creating an Order<Cancelled>
-pub(super) fn order_cancelled<I, Id>(
+pub fn order_cancelled<I, Id>(
     instrument: I,
     cid: ClientOrderId,
     side: Side,
