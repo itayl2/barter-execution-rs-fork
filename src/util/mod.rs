@@ -27,6 +27,7 @@ use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use barter_data::subscription::trade::PublicTrade;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{Instant, sleep};
@@ -55,6 +56,15 @@ impl Record {
     const SELL_UUID_PREFIX: u8 = 0xa;
     const BUY_UUID_PREFIX: u8 = 0xb;
     const DEFAULT_QUANTITY: f64 = 100000000.0;
+
+    pub fn to_market_trade(&self, target_order: &TargetOrder) -> PublicTrade {
+        PublicTrade {
+            id: target_order.id.id.to_string(),
+            price: target_order.price,
+            amount: target_order.quantity,
+            side: target_order.side,
+        }
+    }
 
     pub fn to_limit_order(&self, side: Side, instrument: Instrument) -> Order<RequestOpen> {
         order_request_limit(
@@ -141,6 +151,27 @@ impl Ids {
     }
 }
 
+pub struct TargetOrder {
+    pub id: Ids,
+    pub price: f64,
+    pub quantity: f64,
+    pub side: Side,
+}
+
+pub struct ClientTargetOrders {
+    pub buy: Vec<TargetOrder>,
+    pub sell: Vec<TargetOrder>
+}
+
+impl TargetOrder {
+    pub fn matches_record(&self, record: &Record) -> bool {
+        match self.side {
+            Side::Buy => self.price >= record.best_ask_price,
+            Side::Sell => self.price <= record.best_bid_price,
+        }
+    }
+}
+
 pub async fn run_default_exchange(
     event_account_tx: mpsc::UnboundedSender<AccountEvent>,
     event_simulated_rx: mpsc::UnboundedReceiver<SimulatedEvent>,
@@ -149,6 +180,7 @@ pub async fn run_default_exchange(
     live_trading: Arc<AtomicBool>,
     instrument: Instrument,
     records: &Vec<Record>,
+    target_prices: Arc<Mutex<ClientTargetOrders>>,
 ) -> Result<(), Box<dyn Error>> {
     // Define SimulatedExchange available Instruments
     let instruments = instruments();
@@ -179,6 +211,7 @@ pub async fn run_default_exchange(
 
     // Build SimulatedExchange & run on it's own Tokio task
     tokio::spawn(async move {
+        let target_prices_clone = Arc::clone(&target_prices);
         let mut simulated_execution_client = SimulatedExecution {
             request_tx: event_simulated_tx.clone(),
         };
@@ -186,7 +219,7 @@ pub async fn run_default_exchange(
         let mut current_records_index = 0;
         let total_time = Instant::now();
         while current_records_index < records_count {
-            if let Err(e) = simulated_exchange_load_fast(account.clone(), instrument.clone(), &records_clone, &mut current_records_index, &mut event_waiting_load_fast, &mut live_trading_load_fast).await {
+            if let Err(e) = simulated_exchange_load_fast(account.clone(), instrument.clone(), &records_clone, &mut current_records_index, &mut event_waiting_load_fast, &mut live_trading_load_fast, target_prices_clone).await {
                 eprintln!("Failed simulated_exchange_load_fast at index {}: {e:?}", current_records_index);
                 break;
             }

@@ -12,8 +12,9 @@ use uuid::Uuid;
 use crate::simulated::exchange::account::order::Orders;
 use crate::simulated::execution::SimulatedExecution;
 use async_recursion::async_recursion;
+use barter_data::subscription::trade::PublicTrade;
 use tokio::time::{Instant, sleep};
-use crate::util::{Ids, order_request_limit, Record};
+use crate::util::{Ids, order_request_limit, Record, ClientTargetOrders, TargetOrder};
 
 /// [`SimulatedExchange`] account balances, open orders, fees, and latency.
 pub mod account;
@@ -131,8 +132,13 @@ pub async fn simulated_exchange_load_fast(
     current_index: &mut usize,
     event_waiting: &mut Arc<AtomicBool>,
     live_trading: &mut Arc<AtomicBool>,
+    target_prices: Arc<Mutex<ClientTargetOrders>>
 ) -> Result<(), ExecutionError> {
     println!("GOING FASTTT");
+    let target_prices_owned = target_prices.lock().await;
+    let mut target_orders_concat = target_prices_owned.buy.clone().iter().chain(target_prices_owned.sell.iter()).cloned().collect::<Vec<TargetOrder>>();
+    drop(target_prices_owned);
+
     let mut account_lock: MutexGuard<'_, ClientAccount> = account.lock().await;
     let total_records = records.len();
     let mut current_record = &records[*current_index];
@@ -140,32 +146,46 @@ pub async fn simulated_exchange_load_fast(
     let mut counter = 0;
     let ping_print_interval = 10000;
     let mut ping_time = Instant::now();
+    let mut real_time_submission= false;
     while *current_index < total_records {
         let record = &records[*current_index];
         if record == current_record {
             *current_index += 1;
             continue;
         }
+        let delta_time = record.event_time - current_event_time;
         current_record = record;
         let order_requests = record.get_buy_and_sell_order_requests(instrument.clone());
 
-        let limit_sell_open = account_lock.orders.build_order_open(order_requests.sell.clone());
-        let limit_buy_open = account_lock.orders.build_order_open(order_requests.buy.clone());
         if event_waiting.load(Ordering::SeqCst) || live_trading.load(Ordering::SeqCst) { // meaning we cannot use direct submit anymore
             let sort_time = Instant::now();
             account_lock.orders.orders_mut(&instrument)?.bids.sort();
             account_lock.orders.orders_mut(&instrument)?.asks.sort();
             let sort_elapsed = sort_time.elapsed().as_millis();
+
             drop(account_lock);
             let progress = *current_index as f64 / total_records as f64;
             println!("STOPPING FAST: {ping_print_interval}, time: {}, progress: {:.2}%, sort_elapsed: {sort_elapsed}ms, record: {record:?}", ping_time.elapsed().as_millis(), progress);
             break;
         }
 
-        // let start_time = Instant::now();
-        // orders.add_order_open(limit_buy_open.clone());
+        if delta_time > 0 {
+            sleep(Duration::from_millis(delta_time)).await;
+        }
         account_lock.orders.build_buy_and_sell_open_and_add(order_requests.buy.clone(), order_requests.sell.clone(), &instrument)?;
-        // let elapsed = start_time.elapsed().as_micros();
+        if let Some(index) = target_orders_concat.iter().position(|order| order.matches_record(record)) {
+            let matched_target_order = target_orders_concat[index].clone();
+            // target_orders_concat.remove(index);
+
+            let sort_time = Instant::now();
+            account_lock.orders.orders_mut(&instrument)?.bids.sort();
+            account_lock.orders.orders_mut(&instrument)?.asks.sort();
+            let sort_elapsed = sort_time.elapsed().as_millis();
+
+            println!("Matched target order: {matched_target_trade:?} with {record:?}, sort_elapsed: {sort_elapsed}");
+            account_lock.match_orders(instrument.clone(), record.to_market_trade(&matched_target_order));
+            real_time_submission = true;
+        }
         current_event_time = record.event_time;
         *current_index += 1;
         counter += 1;
