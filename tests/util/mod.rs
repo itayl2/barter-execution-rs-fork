@@ -18,7 +18,8 @@ use barter_integration::model::{
     Exchange, Side,
 };
 use std::{collections::HashMap, time::Duration};
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 
 pub(super) async fn run_default_exchange(
     event_account_tx: mpsc::UnboundedSender<AccountEvent>,
@@ -30,20 +31,20 @@ pub(super) async fn run_default_exchange(
 
     // Create initial ClientAccount balances (Symbols must all be included in the Instruments)
     let final_balances = balances.unwrap_or(initial_balances());
+    let account = Arc::new(Mutex::new(ClientAccount::builder()
+                                          .latency(latency_50ms())
+                                          .fees_percent(fees_50_percent())
+                                          .event_account_tx(event_account_tx)
+                                          .instruments(instruments)
+                                          .balances(final_balances)
+                                          .build()
+                                          .expect("failed to build ClientAccount"),
+    ));
 
     // Build SimulatedExchange & run on it's own Tokio task
     SimulatedExchange::builder()
         .event_simulated_rx(event_simulated_rx)
-        .account(
-            ClientAccount::builder()
-                .latency(latency_50ms())
-                .fees_percent(fees_50_percent())
-                .event_account_tx(event_account_tx)
-                .instruments(instruments)
-                .balances(final_balances)
-                .build()
-                .expect("failed to build ClientAccount"),
-        )
+        .account(account)
         .build()
         .expect("failed to build SimulatedExchange")
         .run()
