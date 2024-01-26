@@ -37,13 +37,7 @@ impl SimulatedExchange {
     pub async fn run(mut self) {
         while let Some(event) = self.event_simulated_rx.recv().await {
             self.event_waiting.store(true, Ordering::SeqCst);
-            let mut account_lock: MutexGuard<'_, ClientAccount> = match self.account.lock().await {
-                Ok(account_lock) => account_lock,
-                Err(_) => {
-                    eprintln!("SimulatedExchange account lock poisoned");
-                    continue;
-                }
-            };
+            let mut account_lock: MutexGuard<'_, ClientAccount> = self.account.lock().await;
             self.event_waiting.store(false, Ordering::SeqCst);
 
             match event {
@@ -92,40 +86,12 @@ impl SimulatedExchange {
         }
     }
 
-    // once we submit a trade from our trading client, we'll acquire a lock on self.account.
-    // this means no new orders will be submitted while we are mutating self.account for the purpose of trading.
-    // This is basically another way to look at the issue wherein this sim exchange is single threaded - it listens to events in a single loop, so it handles one person at a time.
-    // This might create situations where we were able to buy at a price that only lasted single milliseconds, for example.
-    // TODO To be safe, when we review the data after sims / backtests, we should check how long our exit price / buy price was viable when we executed it.
-    pub async fn load_past_data(
+    pub async fn load_slow(
         &mut self,
         instrument: Instrument,
         records: &Vec<Record>,
         start_index: Option<usize>,
     ) -> Result<(), ExecutionError> {
-        let execution_client = match self.execution_client {
-            Some(ref execution_client) => execution_client,
-            None => {
-                eprintln!("SimulatedExchange execution_client is None");
-                panic!("SimulatedExchange execution_client is None");
-            }
-        };
-        let mut account_lock: MutexGuard<'_, ClientAccount>;
-        let orders: &mut Orders;
-        let mut direct_submit = false;
-        if !self.event_waiting.load(Ordering::SeqCst) && !self.live_trading.load(Ordering::SeqCst) {
-            account_lock = match self.account.lock().await {
-                Ok(account_lock) => {
-                    direct_submit = true;
-                    orders = account_lock.orders.orders_mut(&instrument)?;
-                    account_lock
-                },
-                Err(_) => {
-                    eprintln!("SimulatedExchange account lock poisoned");
-                    panic!("SimulatedExchange account lock poisoned");
-                }
-            }
-        };
         let total_records = records.len();
         let mut current_index = start_index.unwrap_or(0);
         let mut current_event_time = records[current_index].event_time;
@@ -140,27 +106,59 @@ impl SimulatedExchange {
                 100000000.0,
             );
 
-            if direct_submit {
-                let limit_buy_open = account_lock.orders.build_order_open(limit_buy_request);
-                if self.event_waiting.load(Ordering::SeqCst) || self.live_trading.load(Ordering::SeqCst) { // meaning we cannot use direct submit anymore
-                    return self.load_past_data(instrument, records, Some(current_index)).await;
-                }
-                orders.add_order_open(limit_buy_open.clone());
-
-            } else {
-                if self.live_trading.load(Ordering::SeqCst) {
-                    let delta_time = record.event_time - current_event_time;
-                    tokio::time::sleep(tokio::time::Duration::from_micros(delta_time)).await;
-                } else if !self.event_waiting.load(Ordering::SeqCst) { // if both are false it means direct submit is available again
-                    return self.load_past_data(instrument, records, Some(current_index)).await;
-                }
-
-                *execution_client.open_orders_no_balance_no_return(vec![limit_buy_request]).await;
+            if self.live_trading.load(Ordering::SeqCst) {
+                let delta_time = record.event_time - current_event_time;
+                tokio::time::sleep(tokio::time::Duration::from_micros(delta_time)).await;
+            } else if !self.event_waiting.load(Ordering::SeqCst) { // if both are false it means direct submit is available again
+                return self.load_fast(instrument, records, Some(current_index)).await;
             }
+
+            self.execution_client.open_orders_no_balance_no_return(vec![limit_buy_request]).await?;
             current_event_time = record.event_time;
             current_index += 1;
         }
 
+        Ok(())
+    }
+
+    // once we submit a trade from our trading client, we'll acquire a lock on self.account.
+    // this means no new orders will be submitted while we are mutating self.account for the purpose of trading.
+    // This is basically another way to look at the issue wherein this sim exchange is single threaded - it listens to events in a single loop, so it handles one person at a time.
+    // This might create situations where we were able to buy at a price that only lasted single milliseconds, for example.
+    // TODO To be safe, when we review the data after sims / backtests, we should check how long our exit price / buy price was viable when we executed it.
+    pub async fn load_fast(
+        &mut self,
+        instrument: Instrument,
+        records: &Vec<Record>,
+        start_index: Option<usize>,
+    ) -> Result<(), ExecutionError> {
+        let mut account_lock: MutexGuard<'_, ClientAccount> = self.account.lock().await;
+        // let orders = account_lock.orders.orders_mut(&instrument)?;
+        let total_records = records.len();
+        let mut current_index = start_index.unwrap_or(0);
+        let mut current_event_time = records[current_index].event_time;
+        while current_index < total_records {
+            // TODO maybe don't submit if current is identical to previous in bid price & ask price & event_time & transaction_time
+            let record = &records[current_index];
+            let limit_buy_request = order_request_limit(
+                instrument.clone(),
+                Ids::new(Uuid::new_v4(), record.update_id.to_string()).cid,
+                Side::Buy,
+                record.best_bid_price,
+                100000000.0,
+            );
+
+            let limit_buy_open = account_lock.orders.build_order_open(limit_buy_request);
+            if self.event_waiting.load(Ordering::SeqCst) || self.live_trading.load(Ordering::SeqCst) { // meaning we cannot use direct submit anymore
+                drop(account_lock);
+                return self.load_slow(instrument, records, Some(current_index)).await;
+            }
+
+            // orders.add_order_open(limit_buy_open.clone());
+            account_lock.orders.orders_mut(&instrument)?.add_order_open(limit_buy_open.clone());
+            current_event_time = record.event_time;
+            current_index += 1;
+        }
         Ok(())
     }
 }

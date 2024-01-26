@@ -106,25 +106,14 @@ pub async fn run_default_exchange(
     });
 
     tokio::spawn(async move {
-        let _ = sim_exchange.load_past_data(instrument.clone(), records, None).await;
+        let _ = sim_exchange.load_fast(instrument.clone(), records, None).await;
         eprintln!("sim_exchange.load_past_data() finished");
     });
 
-    let tasks = vec![tokio::spawn(async move {
-        loop {
-            sleep(Duration::from_secs(1)).await;
-        }
-        eprintln!("sleep finished");
-    })];
-
-    tokio::select! {
-        _ = term_signal.recv() => {
-            logger.info("Received SIGTERM, shutting down.");
-        }
-        _ = futures::future::join_all(tasks) => {
-            logger.info("All tasks completed, shutting down.");
-        }
+    loop {
+        sleep(Duration::from_secs(1)).await;
     }
+    eprintln!("sleep finished");
 
     Ok(())
 }
