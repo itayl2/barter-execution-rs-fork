@@ -82,6 +82,7 @@ pub async fn simulated_exchange_load_slow(
     event_waiting: &mut Arc<AtomicBool>,
     live_trading: &mut Arc<AtomicBool>,
 ) -> Result<(), ExecutionError> {
+    println!("GOING SLOWWWWW");
     let mut counter = 0;
     let total_records = records.len();
     let mut current_record = &records[*current_index];
@@ -130,6 +131,7 @@ pub async fn simulated_exchange_load_fast(
     event_waiting: &mut Arc<AtomicBool>,
     live_trading: &mut Arc<AtomicBool>,
 ) -> Result<(), ExecutionError> {
+    println!("GOING FASTTT");
     let mut account_lock: MutexGuard<'_, ClientAccount> = account.lock().await;
     // let orders = account_lock.orders.orders_mut(&instrument)?;
     let total_records = records.len();
