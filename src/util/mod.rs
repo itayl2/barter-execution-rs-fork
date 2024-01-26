@@ -29,8 +29,8 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, Mutex};
-use tokio::time::sleep;
-use uuid::Uuid;
+use tokio::time::{Instant, sleep};
+use uuid::{Builder, Uuid, Variant, Version};
 use crate::simulated::exchange::{simulated_exchange_load_fast, simulated_exchange_load_slow, simulated_exchange_run};
 use crate::simulated::execution::SimulatedExecution;
 
@@ -44,6 +44,76 @@ pub struct Record {
     pub best_ask_qty: f64,
     pub transaction_time: u64,
     pub event_time: u64,
+}
+
+pub struct RecordOrders {
+    pub buy: Order<RequestOpen>,
+    pub sell: Order<RequestOpen>,
+}
+
+impl Record {
+    const SELL_UUID_PREFIX: u8 = 0xa;
+    const BUY_UUID_PREFIX: u8 = 0xb;
+    const DEFAULT_QUANTITY: f64 = 100000000.0;
+
+    pub fn to_limit_order(&self, side: Side, instrument: Instrument) -> Order<RequestOpen> {
+        order_request_limit(
+            instrument,
+            ClientOrderId(Uuid::new_v4()),
+            side,
+            self.get_price(side),
+            100000000.0,
+        )
+    }
+
+    pub fn get_shared_uuid_suffix() -> [u8; 15] {
+        let mut random_bytes_suffix = [0u8; 15];
+        getrandom::getrandom(&mut random_bytes_suffix).unwrap_or_else(|err| {
+            panic!("could not retrieve random bytes for uuid: {}", err)
+        });
+        random_bytes_suffix
+    }
+
+    pub fn get_buy_and_sell_order_requests(&self, instrument: Instrument) -> RecordOrders {
+        let shared_suffix = Self::get_shared_uuid_suffix();
+        let mut sell_uuid_bytes = [Self::SELL_UUID_PREFIX; 16];
+        let mut buy_uuid_bytes = [Self::BUY_UUID_PREFIX; 16];
+        sell_uuid_bytes[1..].copy_from_slice(&shared_suffix);
+        buy_uuid_bytes[1..].copy_from_slice(&shared_suffix);
+
+        let sell_uuid = Builder::from_bytes(sell_uuid_bytes)
+            .set_variant(Variant::RFC4122)
+            .set_version(Version::Random)
+            .build();
+        let buy_uuid = Builder::from_bytes(buy_uuid_bytes)
+            .set_variant(Variant::RFC4122)
+            .set_version(Version::Random)
+            .build();
+
+        RecordOrders {
+            buy: order_request_limit(
+                instrument.clone(),
+                ClientOrderId(sell_uuid),
+                Side::Sell,
+                self.best_ask_price,
+                Self::DEFAULT_QUANTITY
+            ),
+            sell: order_request_limit(
+                instrument,
+                ClientOrderId(buy_uuid),
+                Side::Buy,
+                self.best_bid_price,
+                Self::DEFAULT_QUANTITY,
+            )
+        }
+    }
+
+    pub fn get_price(&self, side: Side) -> f64 {
+        match side {
+            Side::Buy => self.best_bid_price,
+            Side::Sell => self.best_ask_price,
+        }
+    }
 }
 
 impl PartialEq for Record {
@@ -114,6 +184,7 @@ pub async fn run_default_exchange(
         };
         let records_count = records_clone.len();
         let mut current_records_index = 0;
+        let total_time = Instant::now();
         while current_records_index < records_count {
             if let Err(e) = simulated_exchange_load_fast(account.clone(), instrument.clone(), &records_clone, &mut current_records_index, &mut event_waiting_load_fast, &mut live_trading_load_fast).await {
                 eprintln!("Failed simulated_exchange_load_fast at index {}: {e:?}", current_records_index);
@@ -127,7 +198,7 @@ pub async fn run_default_exchange(
                 }
             }
         }
-        println!("Done loading records into exchange");
+        println!("Done loading records into exchange, took: {} seconds", total_time.elapsed().as_secs());
     });
 
     simulated_exchange_run(account_clone2, &mut event_simulated_rx, event_waiting_clone).await;
@@ -171,8 +242,8 @@ pub fn order_request_limit<I>(
     price: f64,
     quantity: f64,
 ) -> Order<RequestOpen>
-where
-    I: Into<Instrument>,
+    where
+        I: Into<Instrument>,
 {
     Order {
         exchange: Exchange::from(ExecutionId::Simulated),
@@ -197,8 +268,8 @@ pub fn open_order<I>(
     quantity: f64,
     filled: f64,
 ) -> Order<Open>
-where
-    I: Into<Instrument>,
+    where
+        I: Into<Instrument>,
 {
     Order {
         exchange: Exchange::from(ExecutionId::Simulated),
@@ -221,9 +292,9 @@ pub fn order_cancel_request<I, Id>(
     side: Side,
     id: Id,
 ) -> Order<RequestCancel>
-where
-    I: Into<Instrument>,
-    Id: Into<OrderId>,
+    where
+        I: Into<Instrument>,
+        Id: Into<OrderId>,
 {
     Order {
         exchange: Exchange::from(ExecutionId::Simulated),
@@ -241,9 +312,9 @@ pub fn order_cancelled<I, Id>(
     side: Side,
     id: Id,
 ) -> Order<Cancelled>
-where
-    I: Into<Instrument>,
-    Id: Into<OrderId>,
+    where
+        I: Into<Instrument>,
+        Id: Into<OrderId>,
 {
     Order {
         exchange: Exchange::from(ExecutionId::Simulated),

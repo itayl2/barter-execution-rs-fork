@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::simulated::exchange::account::order::Orders;
 use crate::simulated::execution::SimulatedExecution;
 use async_recursion::async_recursion;
-use tokio::time::sleep;
+use tokio::time::{Instant, sleep};
 use crate::util::{Ids, order_request_limit, Record};
 
 /// [`SimulatedExchange`] account balances, open orders, fees, and latency.
@@ -87,6 +87,8 @@ pub async fn simulated_exchange_load_slow(
     let total_records = records.len();
     let mut current_record = &records[*current_index];
     let mut current_event_time = current_record.event_time;
+    let ping_print_interval = 10000;
+    let mut ping_time = Instant::now();
     while *current_index < total_records {
         counter += 1;
         // TODO maybe don't submit if current is identical to previous in bid price & ask price & event_time & transaction_time
@@ -96,13 +98,7 @@ pub async fn simulated_exchange_load_slow(
             continue;
         }
         current_record = record;
-        let limit_buy_request = order_request_limit(
-            instrument.clone(),
-            Ids::new(Uuid::new_v4(), record.update_id.to_string()).cid,
-            Side::Buy,
-            record.best_bid_price,
-            100000000.0,
-        );
+        let order_requests = record.get_buy_and_sell_order_requests(instrument.clone());
 
         if live_trading.load(Ordering::SeqCst) {
             let delta_time = record.event_time - current_event_time;
@@ -110,13 +106,16 @@ pub async fn simulated_exchange_load_slow(
         } else if !event_waiting.load(Ordering::SeqCst) { // if both are false it means direct submit is available again
             break;
         }
-        if counter >= 10000 {
-            counter = 0;
-            println!("gotta be slow");
-        }
-        execution_client.open_orders_no_balance_no_return(vec![limit_buy_request]).await?;
+
+        execution_client.open_orders_no_balance_no_return(vec![order_requests.buy.clone(), order_requests.sell.clone()]).await?;
         current_event_time = record.event_time;
         *current_index += 1;
+        counter += 1;
+        if counter >= ping_print_interval {
+            counter = 0;
+            println!("SLOW: {ping_print_interval}, time: {}", ping_time.elapsed().as_millis());
+            ping_time = Instant::now();
+        }
     }
 
     Ok(())
@@ -137,6 +136,9 @@ pub async fn simulated_exchange_load_fast(
     let total_records = records.len();
     let mut current_record = &records[*current_index];
     let mut current_event_time = current_record.event_time;
+    let mut counter = 0;
+    let ping_print_interval = 10000;
+    let mut ping_time = Instant::now();
     while *current_index < total_records {
         // TODO maybe don't submit if current is identical to previous in bid price & ask price & event_time & transaction_time
         let record = &records[*current_index];
@@ -145,15 +147,10 @@ pub async fn simulated_exchange_load_fast(
             continue;
         }
         current_record = record;
-        let limit_buy_request = order_request_limit(
-            instrument.clone(),
-            Ids::new(Uuid::new_v4(), record.update_id.to_string()).cid,
-            Side::Buy,
-            record.best_bid_price,
-            100000000.0,
-        );
+        let order_requests = record.get_buy_and_sell_order_requests(instrument.clone());
 
-        let limit_buy_open = account_lock.orders.build_order_open(limit_buy_request);
+        let limit_sell_open = account_lock.orders.build_order_open(order_requests.sell.clone());
+        let limit_buy_open = account_lock.orders.build_order_open(order_requests.buy.clone());
         if event_waiting.load(Ordering::SeqCst) || live_trading.load(Ordering::SeqCst) { // meaning we cannot use direct submit anymore
             drop(account_lock);
             break;
@@ -162,9 +159,16 @@ pub async fn simulated_exchange_load_fast(
         // let start_time = Instant::now();
         // orders.add_order_open(limit_buy_open.clone());
         account_lock.orders.orders_mut(&instrument)?.add_order_open(limit_buy_open.clone());
+        account_lock.orders.orders_mut(&instrument)?.add_order_open(limit_sell_open.clone());
         // let elapsed = start_time.elapsed().as_micros();
         current_event_time = record.event_time;
         *current_index += 1;
+        counter += 1;
+        if counter >= ping_print_interval {
+            counter = 0;
+            println!("FAST: {ping_print_interval}, time: {}", ping_time.elapsed().as_millis());
+            ping_time = Instant::now();
+        }
     }
     Ok(())
 }
