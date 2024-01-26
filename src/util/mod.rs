@@ -29,7 +29,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use barter_data::subscription::trade::PublicTrade;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, MutexGuard};
 use tokio::time::{Instant, sleep};
 use uuid::{Builder, Uuid, Variant, Version};
 use crate::simulated::exchange::{simulated_exchange_load_fast, simulated_exchange_load_slow, simulated_exchange_run};
@@ -59,7 +59,7 @@ impl Record {
 
     pub fn to_market_trade(&self, target_order: &TargetOrder) -> PublicTrade {
         PublicTrade {
-            id: target_order.id.id.to_string(),
+            id: target_order.id.cid.to_string(),
             price: target_order.price,
             amount: target_order.quantity,
             side: target_order.side,
@@ -136,7 +136,7 @@ impl PartialEq for Record {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Ids {
     pub cid: ClientOrderId,
     pub id: OrderId,
@@ -151,6 +151,7 @@ impl Ids {
     }
 }
 
+#[derive(Clone, Deserialize, Serialize)]
 pub struct TargetOrder {
     pub id: Ids,
     pub price: f64,
@@ -163,11 +164,83 @@ pub struct ClientTargetOrders {
     pub sell: Vec<TargetOrder>
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CopyAbleTargetOrder {
+    pub id: String,
+    pub price: f64,
+    pub quantity: f64,
+    pub side: Side,
+}
+
+impl CopyAbleTargetOrder {
+    pub fn from_original(order: TargetOrder) -> CopyAbleTargetOrder {
+        CopyAbleTargetOrder {
+            id: serde_json::to_string(&order.id)
+                .expect("Failed to parse Ids to JSON"),
+            price: order.price,
+            quantity: order.quantity,
+            side: order.side,
+        }
+    }
+}
+
+pub struct CopyAbleClientTargetOrders {
+    pub buy: Vec<CopyAbleTargetOrder>,
+    pub sell: Vec<CopyAbleTargetOrder>
+}
+
 impl TargetOrder {
+
+    pub fn new(id: Ids, price: f64, quantity: f64, side: Side) -> Self {
+        Self {
+            id,
+            price,
+            quantity,
+            side,
+        }
+    }
     pub fn matches_record(&self, record: &Record) -> bool {
         match self.side {
             Side::Buy => self.price >= record.best_ask_price,
             Side::Sell => self.price <= record.best_bid_price,
+        }
+    }
+
+    pub fn from_copyable(order: CopyAbleTargetOrder) -> TargetOrder {
+        let ids: Ids = serde_json::from_str(&order.id)
+            .expect("Failed to parse JSON to Ids");
+
+        TargetOrder {
+            id: ids,
+            price: order.price,
+            quantity: order.quantity,
+            side: order.side,
+        }
+    }
+
+    pub fn to_copyable(&self) -> CopyAbleTargetOrder {
+        CopyAbleTargetOrder {
+            id: serde_json::to_string(&self.id)
+                .expect("Failed to parse Ids to JSON"),
+            price: self.price,
+            quantity: self.quantity,
+            side: self.side,
+        }
+    }
+}
+
+impl ClientTargetOrders {
+    pub fn from_mutex(client_orders: &MutexGuard<CopyAbleClientTargetOrders>) -> ClientTargetOrders {
+        ClientTargetOrders {
+            buy: client_orders.buy.clone().into_iter().map(|order| TargetOrder::from_copyable(order)).collect(),
+            sell: client_orders.sell.clone().into_iter().map(|order| TargetOrder::from_copyable(order)).collect(),
+        }
+    }
+
+    pub fn to_copyable(&self) -> CopyAbleClientTargetOrders {
+        CopyAbleClientTargetOrders {
+            buy: self.buy.iter().map(|order| order.to_copyable()).collect(),
+            sell: self.sell.iter().map(|order| order.to_copyable()).collect(),
         }
     }
 }
@@ -180,7 +253,7 @@ pub async fn run_default_exchange(
     live_trading: Arc<AtomicBool>,
     instrument: Instrument,
     records: &Vec<Record>,
-    target_prices: Arc<Mutex<ClientTargetOrders>>,
+    target_prices: Arc<Mutex<CopyAbleClientTargetOrders>>,
 ) -> Result<(), Box<dyn Error>> {
     // Define SimulatedExchange available Instruments
     let instruments = instruments();
@@ -208,10 +281,10 @@ pub async fn run_default_exchange(
     let mut event_simulated_rx = event_simulated_rx;
     let account_clone2 = Arc::clone(&account);
     let records_clone = records.clone();
+    let target_prices_clone = Arc::clone(&target_prices);
 
     // Build SimulatedExchange & run on it's own Tokio task
     tokio::spawn(async move {
-        let target_prices_clone = Arc::clone(&target_prices);
         let mut simulated_execution_client = SimulatedExecution {
             request_tx: event_simulated_tx.clone(),
         };
@@ -219,7 +292,7 @@ pub async fn run_default_exchange(
         let mut current_records_index = 0;
         let total_time = Instant::now();
         while current_records_index < records_count {
-            if let Err(e) = simulated_exchange_load_fast(account.clone(), instrument.clone(), &records_clone, &mut current_records_index, &mut event_waiting_load_fast, &mut live_trading_load_fast, target_prices_clone).await {
+            if let Err(e) = simulated_exchange_load_fast(account.clone(), instrument.clone(), &records_clone, &mut current_records_index, &mut event_waiting_load_fast, &mut live_trading_load_fast, Arc::clone(&target_prices_clone)).await {
                 eprintln!("Failed simulated_exchange_load_fast at index {}: {e:?}", current_records_index);
                 break;
             }

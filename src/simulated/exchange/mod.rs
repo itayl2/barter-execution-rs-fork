@@ -14,7 +14,7 @@ use crate::simulated::execution::SimulatedExecution;
 use async_recursion::async_recursion;
 use barter_data::subscription::trade::PublicTrade;
 use tokio::time::{Instant, sleep};
-use crate::util::{Ids, order_request_limit, Record, ClientTargetOrders, TargetOrder};
+use crate::util::{Ids, order_request_limit, Record, ClientTargetOrders, TargetOrder, CopyAbleClientTargetOrders};
 
 /// [`SimulatedExchange`] account balances, open orders, fees, and latency.
 pub mod account;
@@ -132,12 +132,13 @@ pub async fn simulated_exchange_load_fast(
     current_index: &mut usize,
     event_waiting: &mut Arc<AtomicBool>,
     live_trading: &mut Arc<AtomicBool>,
-    target_prices: Arc<Mutex<ClientTargetOrders>>
+    target_prices: Arc<Mutex<CopyAbleClientTargetOrders>>
 ) -> Result<(), ExecutionError> {
     println!("GOING FASTTT");
     let target_prices_owned = target_prices.lock().await;
-    let mut target_orders_concat = target_prices_owned.buy.clone().iter().chain(target_prices_owned.sell.iter()).cloned().collect::<Vec<TargetOrder>>();
+    let mut parsed_target_orders = ClientTargetOrders::from_mutex(&target_prices_owned);
     drop(target_prices_owned);
+    let mut concat_target_orders = parsed_target_orders.buy.clone().iter().chain(parsed_target_orders.sell.iter()).cloned().collect::<Vec<TargetOrder>>();
 
     let mut account_lock: MutexGuard<'_, ClientAccount> = account.lock().await;
     let total_records = records.len();
@@ -173,16 +174,16 @@ pub async fn simulated_exchange_load_fast(
             sleep(Duration::from_millis(delta_time)).await;
         }
         account_lock.orders.build_buy_and_sell_open_and_add(order_requests.buy.clone(), order_requests.sell.clone(), &instrument)?;
-        if let Some(index) = target_orders_concat.iter().position(|order| order.matches_record(record)) {
-            let matched_target_order = target_orders_concat[index].clone();
-            // target_orders_concat.remove(index);
+        if let Some(index) = concat_target_orders.iter().position(|order| order.matches_record(record)) {
+            let matched_target_order = concat_target_orders[index].clone();
+            // concat_target_orders.remove(index);
 
             let sort_time = Instant::now();
             account_lock.orders.orders_mut(&instrument)?.bids.sort();
             account_lock.orders.orders_mut(&instrument)?.asks.sort();
             let sort_elapsed = sort_time.elapsed().as_millis();
 
-            println!("Matched target order: {matched_target_trade:?} with {record:?}, sort_elapsed: {sort_elapsed}");
+            println!("Matched target order: {:?} with {record:?}, sort_elapsed: {sort_elapsed}", matched_target_order.to_copyable());
             account_lock.match_orders(instrument.clone(), record.to_market_trade(&matched_target_order));
             real_time_submission = true;
         }
