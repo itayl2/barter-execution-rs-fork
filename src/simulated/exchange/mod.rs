@@ -164,8 +164,7 @@ pub async fn simulated_exchange_load_fast(
 
         // let start_time = Instant::now();
         // orders.add_order_open(limit_buy_open.clone());
-        account_lock.orders.orders_mut(&instrument)?.bids.push(limit_buy_open.clone());
-        account_lock.orders.orders_mut(&instrument)?.asks.push(limit_sell_open.clone());
+        account_lock.orders.build_buy_and_sell_open_and_add(order_requests.buy.clone(), order_requests.sell.clone(), &instrument)?;
         // let elapsed = start_time.elapsed().as_micros();
         current_event_time = record.event_time;
         *current_index += 1;

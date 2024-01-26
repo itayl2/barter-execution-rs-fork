@@ -47,9 +47,20 @@ impl ClientOrders {
 
     /// Build an [`Order<Open>`] from the provided [`Order<RequestOpen>`]. The request counter
     /// is incremented and the new total is used as a unique [`OrderId`].
-    pub fn build_order_open(&mut self, request: Order<RequestOpen>) -> Order<Open> {
+    pub fn build_order_open(&mut self, request: Order<RequestOpen>,) -> Order<Open> {
         self.increment_request_counter();
         Order::from((self.order_id(), request))
+    }
+
+    pub fn build_buy_and_sell_open_and_add(&mut self, buy_request: Order<RequestOpen>, sell_request: Order<RequestOpen>, instrument: &Instrument) -> Result<(), ExecutionError> {
+        self.increment_request_counter();
+        let orders_mutable = self.orders_mut(instrument)?;
+        orders_mutable.bids.push(Order::from((self.order_id(), buy_request)));
+
+        self.increment_request_counter();
+        orders_mutable.asks.push(Order::from((self.order_id(), sell_request)));
+
+        Ok(())
     }
 
     /// Increment the [`Order<RequestOpen>`] counter by one to ensure the next generated
