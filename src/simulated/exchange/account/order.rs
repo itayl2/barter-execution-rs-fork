@@ -54,11 +54,14 @@ impl ClientOrders {
 
     pub fn build_buy_and_sell_open_and_add(&mut self, buy_request: Order<RequestOpen>, sell_request: Order<RequestOpen>, instrument: &Instrument) -> Result<(), ExecutionError> {
         self.increment_request_counter();
-        let orders_mutable = self.orders_mut(instrument)?;
-        orders_mutable.bids.push(Order::from((self.order_id(), buy_request)));
+        let buy_order_id = self.order_id();
 
         self.increment_request_counter();
-        orders_mutable.asks.push(Order::from((self.order_id(), sell_request)));
+        let sell_order_id = self.order_id();
+
+        let orders_mutable = self.orders_mut(instrument)?;
+        orders_mutable.bids.push(Order::from((buy_order_id, buy_request)));
+        orders_mutable.asks.push(Order::from((sell_order_id, sell_request)));
 
         Ok(())
     }
