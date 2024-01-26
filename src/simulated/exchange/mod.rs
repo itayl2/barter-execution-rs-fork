@@ -113,7 +113,8 @@ pub async fn simulated_exchange_load_slow(
         counter += 1;
         if counter >= ping_print_interval {
             counter = 0;
-            println!("SLOW: {ping_print_interval}, time: {}", ping_time.elapsed().as_millis());
+            let progress = *current_index as f64 / total_records as f64;
+            println!("SLOW: {ping_print_interval}, time: {}, progress: {:.2}%, record: {record:?}", ping_time.elapsed().as_millis(), progress);
             ping_time = Instant::now();
         }
     }
@@ -166,7 +167,8 @@ pub async fn simulated_exchange_load_fast(
         counter += 1;
         if counter >= ping_print_interval {
             counter = 0;
-            println!("FAST: {ping_print_interval}, time: {}", ping_time.elapsed().as_millis());
+            let progress = *current_index as f64 / total_records as f64;
+            println!("FAST: {ping_print_interval}, time: {}, progress: {:.2}%, record: {record:?}", ping_time.elapsed().as_millis(), progress);
             ping_time = Instant::now();
         }
     }
