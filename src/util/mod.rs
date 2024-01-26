@@ -35,7 +35,7 @@ use crate::simulated::exchange::{simulated_exchange_load_fast, simulated_exchang
 use crate::simulated::execution::SimulatedExecution;
 
 
-#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Record {
     pub update_id: u64,
     pub best_bid_price: f64,
@@ -44,6 +44,15 @@ pub struct Record {
     pub best_ask_qty: f64,
     pub transaction_time: u64,
     pub event_time: u64,
+}
+
+impl PartialEq for Record {
+    fn eq(&self, other: &Self) -> bool {
+        self.best_bid_price == other.best_bid_price &&
+            self.best_ask_price == other.best_ask_price &&
+            self.transaction_time == other.transaction_time &&
+            self.event_time == other.event_time
+    }
 }
 
 
@@ -143,14 +152,14 @@ pub fn fees_50_percent() -> f64 {
 
 // Instruments that the SimulatedExchange supports
 pub fn instruments() -> Vec<Instrument> {
-    vec![Instrument::from(("btc", "usdt", InstrumentKind::Perpetual))]
+    vec![Instrument::from(("btc", "usd", InstrumentKind::Perpetual))]
 }
 
 // Initial SimulatedExchange ClientAccount balances for each Symbol
 pub fn initial_balances() -> ClientBalances {
     ClientBalances(HashMap::from([
         (Symbol::from("btc"), Balance::new(10.0, 10.0)),
-        (Symbol::from("usdt"), Balance::new(10_000.0, 10_000.0)),
+        (Symbol::from("usd"), Balance::new(10_000.0, 10_000.0)),
     ]))
 }
 

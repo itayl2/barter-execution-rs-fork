@@ -60,7 +60,7 @@ async fn main() {
     // 2. Fetch initial Balances when there have been no balance changing events
     test_2_fetch_balances_and_check_same_as_initial(&client).await;
 
-    // 3. Open LIMIT Buy Order and check AccountEvent Balance is sent for the quote currency (usdt)
+    // 3. Open LIMIT Buy Order and check AccountEvent Balance is sent for the quote currency (usd)
     let test_3_ids = Ids::new(Uuid::new_v4(), 1);
     test_3_open_limit_buy_order(&client, test_3_ids.clone(), &mut event_account_rx).await;
 
@@ -155,7 +155,7 @@ async fn test_2_fetch_balances_and_check_same_as_initial(client: &SimulatedExecu
     }
 }
 
-// 3. Open LIMIT Buy Order and check AccountEvent Balance is sent for the quote currency (usdt).
+// 3. Open LIMIT Buy Order and check AccountEvent Balance is sent for the quote currency (usd).
 async fn test_3_open_limit_buy_order(
     client: &SimulatedExecution,
     test_3_ids: Ids,
@@ -163,7 +163,7 @@ async fn test_3_open_limit_buy_order(
 ) {
     let new_orders = client
         .open_orders(vec![order_request_limit(
-            Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+            Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
             test_3_ids.cid,
             Side::Buy,
             100.0,
@@ -172,7 +172,7 @@ async fn test_3_open_limit_buy_order(
         .await;
 
     let expected_new_order = open_order(
-        Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+        Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
         test_3_ids.cid,
         test_3_ids.id,
         Side::Buy,
@@ -184,15 +184,15 @@ async fn test_3_open_limit_buy_order(
     assert_eq!(new_orders.len(), 1);
     assert_eq!(new_orders[0].clone().unwrap(), expected_new_order);
 
-    // Check AccountEvent Balance for quote currency (usdt) has available balance decrease
+    // Check AccountEvent Balance for quote currency (usd) has available balance decrease
     match event_account_rx.try_recv() {
         Ok(AccountEvent {
-            kind: AccountEventKind::Balance(usdt_balance),
+            kind: AccountEventKind::Balance(usd_balance),
             ..
         }) => {
-            // Expected usdt Balance.available = 10_000 - (100.0 * 1.0)
-            let expected = SymbolBalance::new("usdt", Balance::new(10_000.0, 9_900.0));
-            assert_eq!(usdt_balance, expected);
+            // Expected usd Balance.available = 10_000 - (100.0 * 1.0)
+            let expected = SymbolBalance::new("usd", Balance::new(10_000.0, 9_900.0));
+            assert_eq!(usd_balance, expected);
         }
         other => {
             panic!("try_recv() consumed unexpected: {:?}", other);
@@ -229,7 +229,7 @@ fn test_4_send_market_event_that_does_not_match_any_open_order(
 ) {
     event_simulated_tx
         .send(SimulatedEvent::MarketTrade((
-            Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+            Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
             PublicTrade {
                 id: "test_4".to_string(),
                 side: Side::Sell,
@@ -256,7 +256,7 @@ async fn test_5_cancel_buy_order(
 ) {
     let cancelled = client
         .cancel_orders(vec![order_cancel_request(
-            Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+            Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
             test_3_ids.cid,
             Side::Buy,
             test_3_ids.id.clone(),
@@ -264,7 +264,7 @@ async fn test_5_cancel_buy_order(
         .await;
 
     let expected_cancelled = order_cancelled(
-        Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+        Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
         test_3_ids.cid,
         Side::Buy,
         test_3_ids.id,
@@ -287,15 +287,15 @@ async fn test_5_cancel_buy_order(
         }
     }
 
-    // Check AccountEvent Balance for quote currency (usdt) has available balance increase
+    // Check AccountEvent Balance for quote currency (usd) has available balance increase
     match event_account_rx.try_recv() {
         Ok(AccountEvent {
-            kind: AccountEventKind::Balance(usdt_balance),
+            kind: AccountEventKind::Balance(usd_balance),
             ..
         }) => {
-            // Expected usdt Balance.available = 9_900 + (100.0 * 1.0)
-            let expected = SymbolBalance::new("usdt", Balance::new(10_000.0, 10_000.0));
-            assert_eq!(usdt_balance, expected);
+            // Expected usd Balance.available = 9_900 + (100.0 * 1.0)
+            let expected = SymbolBalance::new("usd", Balance::new(10_000.0, 10_000.0));
+            assert_eq!(usd_balance, expected);
         }
         other => {
             panic!("try_recv() consumed unexpected: {:?}", other);
@@ -321,14 +321,14 @@ async fn test_6_open_2x_limit_buy_orders(
     let opened_orders = client
         .open_orders(vec![
             order_request_limit(
-                Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+                Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
                 test_6_ids_1.cid,
                 Side::Buy,
                 100.0,
                 1.0,
             ),
             order_request_limit(
-                Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+                Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
                 test_6_ids_2.cid,
                 Side::Buy,
                 200.0,
@@ -338,7 +338,7 @@ async fn test_6_open_2x_limit_buy_orders(
         .await;
 
     let expected_order_new_1 = open_order(
-        Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+        Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
         test_6_ids_1.cid,
         test_6_ids_1.id.clone(),
         Side::Buy,
@@ -348,7 +348,7 @@ async fn test_6_open_2x_limit_buy_orders(
     );
 
     let expected_order_new_2 = open_order(
-        Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+        Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
         test_6_ids_2.cid,
         test_6_ids_2.id,
         Side::Buy,
@@ -364,12 +364,12 @@ async fn test_6_open_2x_limit_buy_orders(
     // Check AccountEvent Balance for first order - quote currency has available balance decrease
     match event_account_rx.try_recv() {
         Ok(AccountEvent {
-            kind: AccountEventKind::Balance(usdt_balance),
+            kind: AccountEventKind::Balance(usd_balance),
             ..
         }) => {
-            // Expected usdt Balance.available = 10_000 - (100.0 * 1.0)
-            let expected = SymbolBalance::new("usdt", Balance::new(10_000.0, 9_900.0));
-            assert_eq!(usdt_balance, expected);
+            // Expected usd Balance.available = 10_000 - (100.0 * 1.0)
+            let expected = SymbolBalance::new("usd", Balance::new(10_000.0, 9_900.0));
+            assert_eq!(usd_balance, expected);
         }
         other => {
             panic!("try_recv() consumed unexpected: {:?}", other);
@@ -393,12 +393,12 @@ async fn test_6_open_2x_limit_buy_orders(
     // Check AccountEvent Balance for second order - quote currency has available balance decrease
     match event_account_rx.try_recv() {
         Ok(AccountEvent {
-            kind: AccountEventKind::Balance(usdt_balance),
+            kind: AccountEventKind::Balance(usd_balance),
             ..
         }) => {
-            // Expected usdt Balance.available = 9_900 - (200.0 * 1.0)
-            let expected = SymbolBalance::new("usdt", Balance::new(10_000.0, 9_700.0));
-            assert_eq!(usdt_balance, expected);
+            // Expected usd Balance.available = 9_900 - (200.0 * 1.0)
+            let expected = SymbolBalance::new("usd", Balance::new(10_000.0, 9_700.0));
+            assert_eq!(usd_balance, expected);
         }
         other => {
             panic!("try_recv() consumed unexpected: {:?}", other);
@@ -437,7 +437,7 @@ async fn test_7_send_market_event_that_exact_full_matches_order(
     // Send matching MarketEvent
     event_simulated_tx
         .send(SimulatedEvent::MarketTrade((
-            Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+            Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
             PublicTrade {
                 id: "test_7".to_string(),
                 side: Side::Sell,
@@ -466,9 +466,9 @@ async fn test_7_send_market_event_that_exact_full_matches_order(
             );
             assert_eq!(balances[0], expected_btc);
 
-            // Quote Balance second: expected usdt Balance { total: 10_000 - 200, available: 9_700 }
-            let expected_usdt = SymbolBalance::new("usdt", Balance::new(9_800.0, 9_700.0));
-            assert_eq!(balances[1], expected_usdt);
+            // Quote Balance second: expected usd Balance { total: 10_000 - 200, available: 9_700 }
+            let expected_usd = SymbolBalance::new("usd", Balance::new(9_800.0, 9_700.0));
+            assert_eq!(balances[1], expected_usd);
         }
         other => {
             panic!("try_recv() consumed unexpected: {:?}", other);
@@ -484,7 +484,7 @@ async fn test_7_send_market_event_that_exact_full_matches_order(
             let expected = Trade {
                 id: TradeId(1.to_string()),
                 order_id: OrderId(3.to_string()),
-                instrument: Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+                instrument: Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
                 side: Side::Buy,
                 price: 200.0,
                 quantity: 1.0,
@@ -516,7 +516,7 @@ async fn test_8_fetch_open_orders_and_check_test_6_order_cid_1_only(
     assert_eq!(
         open_orders[0].clone(),
         open_order(
-            Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+            Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
             test_6_ids_1.cid,
             test_6_ids_1.id,
             Side::Buy,
@@ -537,14 +537,14 @@ async fn test_9_open_2x_limit_sell_orders(
     let opened_orders = client
         .open_orders(vec![
             order_request_limit(
-                Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+                Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
                 test_9_ids_1.cid,
                 Side::Sell,
                 500.0,
                 1.0,
             ),
             order_request_limit(
-                Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+                Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
                 test_9_ids_2.cid,
                 Side::Sell,
                 1000.0,
@@ -554,7 +554,7 @@ async fn test_9_open_2x_limit_sell_orders(
         .await;
 
     let expected_order_new_1 = open_order(
-        Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+        Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
         test_9_ids_1.cid,
         test_9_ids_1.id,
         Side::Sell,
@@ -564,7 +564,7 @@ async fn test_9_open_2x_limit_sell_orders(
     );
 
     let expected_order_new_2 = open_order(
-        Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+        Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
         test_9_ids_2.cid,
         test_9_ids_2.id,
         Side::Sell,
@@ -668,7 +668,7 @@ async fn test_10_send_market_event_that_full_and_partial_matches_orders(
     // Send MarketEvent that fully matches one order and partially matches another
     event_simulated_tx
         .send(SimulatedEvent::MarketTrade((
-            Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+            Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
             PublicTrade {
                 id: "test_10".to_string(),
                 side: Side::Buy,
@@ -696,10 +696,10 @@ async fn test_10_send_market_event_that_full_and_partial_matches_orders(
             assert_eq!(balances[0], expected_btc);
 
             // Quote Balance second:
-            // Expected usdt increase = (500 * 1.0) - (500 * 1.0 * 0.5) = 500 - 250 = 250
-            // expected usdt Balance { total: 9_800 + 250, available: 9_700 + 250 }
-            let expected_usdt = SymbolBalance::new("usdt", Balance::new(10_050.0, 9_950.0));
-            assert_eq!(balances[1], expected_usdt);
+            // Expected usd increase = (500 * 1.0) - (500 * 1.0 * 0.5) = 500 - 250 = 250
+            // expected usd Balance { total: 9_800 + 250, available: 9_700 + 250 }
+            let expected_usd = SymbolBalance::new("usd", Balance::new(10_050.0, 9_950.0));
+            assert_eq!(balances[1], expected_usd);
         }
         other => {
             panic!(
@@ -717,11 +717,11 @@ async fn test_10_send_market_event_that_full_and_partial_matches_orders(
             let expected = Trade {
                 id: TradeId(2.to_string()),
                 order_id: OrderId(4.to_string()),
-                instrument: Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+                instrument: Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
                 side: Side::Sell,
                 price: 500.0,
                 quantity: 1.0,
-                fees: SymbolFees::new("usdt", first_full_fill_fees),
+                fees: SymbolFees::new("usd", first_full_fill_fees),
             };
             assert_eq!(trade, expected);
         }
@@ -752,11 +752,11 @@ async fn test_10_send_market_event_that_full_and_partial_matches_orders(
             assert_eq!(balances[0], expected_btc);
 
             // Quote Balance second:
-            // Expected usdt increase = (1000 * 0.5) - (1000 * 0.5 * 0.5) = 500 - 250 = 250
-            // expected usdt Balance { total: 10_050 + 250, available: 9_950 + 250 }
-            let expected_usdt =
-                SymbolBalance::new("usdt", Balance::new(10_050.0 + 250.0, 9_950.0 + 250.0));
-            assert_eq!(balances[1], expected_usdt);
+            // Expected usd increase = (1000 * 0.5) - (1000 * 0.5 * 0.5) = 500 - 250 = 250
+            // expected usd Balance { total: 10_050 + 250, available: 9_950 + 250 }
+            let expected_usd =
+                SymbolBalance::new("usd", Balance::new(10_050.0 + 250.0, 9_950.0 + 250.0));
+            assert_eq!(balances[1], expected_usd);
         }
         other => {
             panic!(
@@ -774,11 +774,11 @@ async fn test_10_send_market_event_that_full_and_partial_matches_orders(
             let expected = Trade {
                 id: TradeId(3.to_string()),
                 order_id: OrderId(5.to_string()),
-                instrument: Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+                instrument: Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
                 side: Side::Sell,
                 price: 1000.0,
                 quantity: 0.5,
-                fees: SymbolFees::new("usdt", second_partial_fill_fees),
+                fees: SymbolFees::new("usd", second_partial_fill_fees),
             };
             assert_eq!(trade, expected);
         }
@@ -815,14 +815,14 @@ async fn test_11_cancel_all_orders(
     let expected_cancelled = vec![
         order_cancelled(
             // Bids are cancelled first
-            Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+            Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
             test_6_ids_1.cid,
             Side::Buy,
             test_6_ids_1.id,
         ),
         order_cancelled(
             // Asks are cancelled second
-            Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+            Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
             test_9_ids_2.cid,
             Side::Sell,
             test_9_ids_2.id,
@@ -862,10 +862,10 @@ async fn test_11_cancel_all_orders(
 
             // Bids are cancelled first, so balance is updated first
             // test_6_order_cid_1, Side::Buy, price=100.0, quantity=1.0
-            // Therefore, usdt Balance { total: 10_300, available: 10_200 + (100 * 1)
-            let expected_usdt =
-                SymbolBalance::new("usdt", Balance::new(10_300.0, 10_200.0 + 100.0));
-            assert_eq!(balances[0], expected_usdt);
+            // Therefore, usd Balance { total: 10_300, available: 10_200 + (100 * 1)
+            let expected_usd =
+                SymbolBalance::new("usd", Balance::new(10_300.0, 10_200.0 + 100.0));
+            assert_eq!(balances[0], expected_usd);
 
             // Asks are cancelled second, so balance is updated first
             // test_9_order_cid_2, Side::Sell, price=1000.0, quantity=1.0, filled=0.5
@@ -909,14 +909,14 @@ async fn test_13_fail_to_open_one_of_two_limits_with_insufficient_funds(
     let opened_orders = client
         .open_orders(vec![
             order_request_limit(
-                Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+                Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
                 test_13_ids_1.cid,
                 Side::Buy,
                 1_000_000_000.0,
                 1.0,
             ),
             order_request_limit(
-                Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+                Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
                 test_13_ids_2.cid,
                 Side::Sell,
                 1000.0,
@@ -925,9 +925,9 @@ async fn test_13_fail_to_open_one_of_two_limits_with_insufficient_funds(
         ])
         .await;
 
-    let expected_order_new_1 = Err(ExecutionError::InsufficientBalance(Symbol::from("usdt")));
+    let expected_order_new_1 = Err(ExecutionError::InsufficientBalance(Symbol::from("usd")));
     let expected_order_new_2 = open_order(
-        Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+        Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
         test_13_ids_2.cid,
         test_13_ids_2.id,
         Side::Sell,
@@ -940,7 +940,7 @@ async fn test_13_fail_to_open_one_of_two_limits_with_insufficient_funds(
     assert_eq!(opened_orders[0].clone(), expected_order_new_1);
     assert_eq!(opened_orders[1].clone().unwrap(), expected_order_new_2);
 
-    // Note: First order failed to due usdt InsufficientBalance, so don't expect any AccountEvents
+    // Note: First order failed to due usd InsufficientBalance, so don't expect any AccountEvents
 
     // Check AccountEvent Balance for second order - quote currency has available balance decrease
     match event_account_rx.try_recv() {
@@ -994,7 +994,7 @@ async fn test_14_fail_to_cancel_limit_with_order_not_found(client: &SimulatedExe
     let cid = ClientOrderId(Uuid::new_v4());
     let cancelled = client
         .cancel_orders(vec![order_cancel_request(
-            Instrument::from(("btc", "usdt", InstrumentKind::Perpetual)),
+            Instrument::from(("btc", "usd", InstrumentKind::Perpetual)),
             cid,
             Side::Buy,
             OrderId::from("order will not be found"),

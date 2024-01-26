@@ -61,14 +61,14 @@ pub(super) fn fees_50_percent() -> f64 {
 
 // Instruments that the SimulatedExchange supports
 pub(super) fn instruments() -> Vec<Instrument> {
-    vec![Instrument::from(("btc", "usdt", InstrumentKind::Perpetual))]
+    vec![Instrument::from(("btc", "usd", InstrumentKind::Perpetual))]
 }
 
 // Initial SimulatedExchange ClientAccount balances for each Symbol
 pub(super) fn initial_balances() -> ClientBalances {
     ClientBalances(HashMap::from([
         (Symbol::from("btc"), Balance::new(10.0, 10.0)),
-        (Symbol::from("usdt"), Balance::new(10_000.0, 10_000.0)),
+        (Symbol::from("usd"), Balance::new(10_000.0, 10_000.0)),
     ]))
 }
 
