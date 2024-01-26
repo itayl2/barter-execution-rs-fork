@@ -91,7 +91,6 @@ pub async fn simulated_exchange_load_slow(
     let mut ping_time = Instant::now();
     while *current_index < total_records {
         counter += 1;
-        // TODO maybe don't submit if current is identical to previous in bid price & ask price & event_time & transaction_time
         let record = &records[*current_index];
         if record == current_record {
             *current_index += 1;
@@ -143,7 +142,6 @@ pub async fn simulated_exchange_load_fast(
     let ping_print_interval = 10000;
     let mut ping_time = Instant::now();
     while *current_index < total_records {
-        // TODO maybe don't submit if current is identical to previous in bid price & ask price & event_time & transaction_time
         let record = &records[*current_index];
         if record == current_record {
             *current_index += 1;
