@@ -19,6 +19,7 @@ use barter_integration::model::{
 };
 use std::{collections::HashMap, time::Duration};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tokio::sync::{mpsc, Mutex};
 
 pub(super) async fn run_default_exchange(
@@ -40,14 +41,13 @@ pub(super) async fn run_default_exchange(
                                           .build()
                                           .expect("failed to build ClientAccount"),
     ));
+    let event_waiting = Arc::new(AtomicBool::new(false));
+    let mut event_simulated_rx = event_simulated_rx;
 
     // Build SimulatedExchange & run on it's own Tokio task
-    SimulatedExchange::builder()
-        .event_simulated_rx(event_simulated_rx)
-        .account(account)
-        .build()
+    SimulatedExchange::builder().build()
         .expect("failed to build SimulatedExchange")
-        .run()
+        .run(account, &mut event_simulated_rx, event_waiting)
         .await
 }
 

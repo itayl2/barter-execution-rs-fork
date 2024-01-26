@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::sleep;
 use uuid::Uuid;
+use crate::simulated::exchange::{simulated_exchange_load_fast, simulated_exchange_load_slow, simulated_exchange_run};
 use crate::simulated::execution::SimulatedExecution;
 
 
@@ -84,36 +85,43 @@ pub async fn run_default_exchange(
         .build()
         .expect("failed to build ClientAccount")));
 
+
     let event_waiting = Arc::new(AtomicBool::new(false));
-    let simulated_execution_client = SimulatedExecution {
-        request_tx: event_simulated_tx.clone(),
-    };
+    let event_waiting_clone = Arc::clone(&event_waiting);
+    let mut event_waiting_load_fast = Arc::clone(&event_waiting);
+    let mut event_waiting_load_slow = Arc::clone(&event_waiting);
+
+    let mut live_trading_load_fast = Arc::clone(&live_trading);
+    let mut live_trading_load_slow = Arc::clone(&live_trading);
+
+    let mut event_simulated_rx = event_simulated_rx;
+    let account_clone2 = Arc::clone(&account);
+    let records_clone = records.clone();
 
     // Build SimulatedExchange & run on it's own Tokio task
-    let mut sim_exchange = SimulatedExchange::builder()
-        .event_simulated_rx(event_simulated_rx)
-        .execution_client(simulated_execution_client)
-        .account(account)
-        .live_trading(live_trading)
-        .event_waiting(event_waiting)
-        .build()
-        .expect("failed to build SimulatedExchange");
-
-    let mut exchange_clone = sim_exchange.clone();
     tokio::spawn(async move {
-        let _ = exchange_clone.run().await;
-        eprintln!("sim_exchange.run() finished");
+        let mut simulated_execution_client = SimulatedExecution {
+            request_tx: event_simulated_tx.clone(),
+        };
+        let records_count = records_clone.len();
+        let mut current_records_index = 0;
+        while current_records_index < records_count {
+            if let Err(e) = simulated_exchange_load_fast(account.clone(), instrument.clone(), &records_clone, &mut current_records_index, &mut event_waiting_load_fast, &mut live_trading_load_fast).await {
+                eprintln!("Failed simulated_exchange_load_fast at index {}: {e:?}", current_records_index);
+                break;
+            }
+
+            if current_records_index < records_count {
+                if let Err(e) = simulated_exchange_load_slow(instrument.clone(), &records_clone, &mut current_records_index, &mut simulated_execution_client, &mut event_waiting_load_slow, &mut live_trading_load_slow).await {
+                    eprintln!("Failed simulated_exchange_load_slow at index {}: {e:?}", current_records_index);
+                    break;
+                }
+            }
+        }
+        println!("Done loading records into exchange");
     });
 
-    tokio::spawn(async move {
-        let _ = sim_exchange.load_fast(instrument.clone(), records, None).await;
-        eprintln!("sim_exchange.load_past_data() finished");
-    });
-
-    loop {
-        sleep(Duration::from_secs(1)).await;
-    }
-    eprintln!("sleep finished");
+    simulated_exchange_run(account_clone2, &mut event_simulated_rx, event_waiting_clone).await;
 
     Ok(())
 }
