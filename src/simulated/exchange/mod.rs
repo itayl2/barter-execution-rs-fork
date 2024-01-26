@@ -134,7 +134,6 @@ pub async fn simulated_exchange_load_fast(
 ) -> Result<(), ExecutionError> {
     println!("GOING FASTTT");
     let mut account_lock: MutexGuard<'_, ClientAccount> = account.lock().await;
-    let orders = account_lock.orders.orders_mut(&instrument)?;
     let total_records = records.len();
     let mut current_record = &records[*current_index];
     let mut current_event_time = current_record.event_time;
@@ -154,8 +153,8 @@ pub async fn simulated_exchange_load_fast(
         let limit_buy_open = account_lock.orders.build_order_open(order_requests.buy.clone());
         if event_waiting.load(Ordering::SeqCst) || live_trading.load(Ordering::SeqCst) { // meaning we cannot use direct submit anymore
             let sort_time = Instant::now();
-            orders.bids.sort();
-            orders.asks.sort();
+            account_lock.orders.orders_mut(&instrument)?.bids.sort();
+            account_lock.orders.orders_mut(&instrument)?.asks.sort();
             let sort_elapsed = sort_time.elapsed().as_millis();
             drop(account_lock);
             let progress = *current_index as f64 / total_records as f64;
@@ -165,8 +164,8 @@ pub async fn simulated_exchange_load_fast(
 
         // let start_time = Instant::now();
         // orders.add_order_open(limit_buy_open.clone());
-        orders.bids.push(limit_buy_open.clone());
-        orders.asks.push(limit_sell_open.clone());
+        account_lock.orders.orders_mut(&instrument)?.bids.push(limit_buy_open.clone());
+        account_lock.orders.orders_mut(&instrument)?.asks.push(limit_sell_open.clone());
         // let elapsed = start_time.elapsed().as_micros();
         current_event_time = record.event_time;
         *current_index += 1;
