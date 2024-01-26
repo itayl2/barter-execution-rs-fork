@@ -90,6 +90,19 @@ impl Orders {
         }
     }
 
+    pub fn add_order_open_no_sort(&mut self, open: Order<Open>) {
+        match open.side {
+            Side::Buy => {
+                // Add Order<Open> to open bids
+                self.bids.push(open);
+            }
+            Side::Sell => {
+                // Add Order<Open> to open asks
+                self.asks.push(open);
+            }
+        }
+    }
+
     /// Check if an input [`PublicTrade`] matches an bid or ask client [`Open<Order>`].
     ///
     /// Note:

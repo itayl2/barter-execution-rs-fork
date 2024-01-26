@@ -29,7 +29,7 @@ pub async fn simulated_exchange_run(
     event_waiting: Arc<AtomicBool>,
 ) {
     while let Some(event) = event_simulated_rx.recv().await {
-        event_waiting.store(true, Ordering::SeqCst);
+        event_waiting.store(true, Ordering::SeqCst); // let the data-submission thread know that you are waiting for the account lock so it could release the lock and submit data via events while you are working
         let mut account_lock: MutexGuard<'_, ClientAccount> = account.lock().await;
         event_waiting.store(false, Ordering::SeqCst);
 
@@ -104,6 +104,8 @@ pub async fn simulated_exchange_load_slow(
             let delta_time = record.event_time - current_event_time;
             tokio::time::sleep(Duration::from_micros(delta_time)).await;
         } else if !event_waiting.load(Ordering::SeqCst) { // if both are false it means direct submit is available again
+            let progress = *current_index as f64 / total_records as f64;
+            println!("STOPPING SLOW: {ping_print_interval}, time: {}, progress: {:.2}%, record: {record:?}", ping_time.elapsed().as_millis(), progress);
             break;
         }
 
@@ -133,7 +135,7 @@ pub async fn simulated_exchange_load_fast(
 ) -> Result<(), ExecutionError> {
     println!("GOING FASTTT");
     let mut account_lock: MutexGuard<'_, ClientAccount> = account.lock().await;
-    // let orders = account_lock.orders.orders_mut(&instrument)?;
+    let orders = account_lock.orders.orders_mut(&instrument)?;
     let total_records = records.len();
     let mut current_record = &records[*current_index];
     let mut current_event_time = current_record.event_time;
@@ -153,14 +155,20 @@ pub async fn simulated_exchange_load_fast(
         let limit_sell_open = account_lock.orders.build_order_open(order_requests.sell.clone());
         let limit_buy_open = account_lock.orders.build_order_open(order_requests.buy.clone());
         if event_waiting.load(Ordering::SeqCst) || live_trading.load(Ordering::SeqCst) { // meaning we cannot use direct submit anymore
+            let sort_time = Instant::now();
+            orders.bids.sort();
+            orders.asks.sort();
+            let sort_elapsed = sort_time.elapsed().as_millis();
             drop(account_lock);
+            let progress = *current_index as f64 / total_records as f64;
+            println!("STOPPING FAST: {ping_print_interval}, time: {}, progress: {:.2}%, sort_elapsed: {sort_elapsed}ms, record: {record:?}", ping_time.elapsed().as_millis(), progress);
             break;
         }
 
         // let start_time = Instant::now();
         // orders.add_order_open(limit_buy_open.clone());
-        account_lock.orders.orders_mut(&instrument)?.add_order_open(limit_buy_open.clone());
-        account_lock.orders.orders_mut(&instrument)?.add_order_open(limit_sell_open.clone());
+        orders.bids.push(limit_buy_open.clone());
+        orders.asks.push(limit_sell_open.clone());
         // let elapsed = start_time.elapsed().as_micros();
         current_event_time = record.event_time;
         *current_index += 1;
