@@ -335,15 +335,15 @@ pub fn respond_with_latency<Response>(
 ) where
     Response: Debug + Send + 'static,
 {
-    // tokio::spawn(async move {
-    //     tokio::time::sleep(latency).await;
-    //     response_tx
-    //         .send(response)
-    //         .expect("SimulatedExchange failed to send oneshot response to execution request")
-    // });
-    response_tx
-        .send(response)
-        .expect("SimulatedExchange failed to send oneshot response to execution request")
+    tokio::spawn(async move {
+        tokio::time::sleep(latency).await;
+        response_tx
+            .send(response)
+            .expect("SimulatedExchange failed to send oneshot response to execution request")
+    });
+    // response_tx
+    //     .send(response)
+    //     .expect("SimulatedExchange failed to send oneshot response to execution request")
 }
 
 #[derive(Debug, Default)]
