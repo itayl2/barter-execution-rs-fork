@@ -173,20 +173,27 @@ pub async fn simulated_exchange_load_fast(
         if delta_time > 0 {
             sleep(Duration::from_millis(delta_time)).await;
         }
-        account_lock.orders.build_buy_and_sell_open_and_add(order_requests.buy.clone(), order_requests.sell.clone(), &instrument)?;
+
         if let Some(index) = concat_target_orders.iter().position(|order| order.matches_record(record)) {
             let matched_target_order = concat_target_orders[index].clone();
             // concat_target_orders.remove(index);
 
-            let sort_time = Instant::now();
-            account_lock.orders.orders_mut(&instrument)?.bids.sort();
-            account_lock.orders.orders_mut(&instrument)?.asks.sort();
-            let sort_elapsed = sort_time.elapsed().as_millis();
+            let mut sort_elapsed: u128 = 0;
+            if real_time_submission {
+                let sort_time = Instant::now();
+                account_lock.orders.orders_mut(&instrument)?.bids.sort();
+                account_lock.orders.orders_mut(&instrument)?.asks.sort();
+                sort_elapsed = sort_time.elapsed().as_millis();
+            } else {
+                account_lock.orders.orders_mut(&instrument)?.bids = vec![]; // so that it matches only with ours?
+                account_lock.orders.orders_mut(&instrument)?.asks = vec![]; // so that it matches only with ours?
+            }
 
             println!("Matched target order: {:?} with {record:?}, sort_elapsed: {sort_elapsed}", matched_target_order.to_copyable());
             account_lock.match_orders(instrument.clone(), record.to_market_trade(&matched_target_order));
             real_time_submission = true;
         }
+        account_lock.orders.build_buy_and_sell_open_and_add(order_requests.buy.clone(), order_requests.sell.clone(), &instrument)?;
         current_event_time = record.event_time;
         *current_index += 1;
         counter += 1;
